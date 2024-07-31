@@ -2,6 +2,7 @@ import boto3
 import json
 from collections import defaultdict
 from datetime import datetime
+import configparser
 
 def initialize_aws_connection(aws_access_key_id, aws_secret_access_key, region_name):
     session = boto3.Session(
@@ -90,13 +91,15 @@ def write_sizes_to_s3(session, bucket_names, output_bucket, output_directory):
         output_key = f"{output_directory}/{current_date}/{bucket}.json"
         s3.put_object(Bucket=output_bucket, Key=output_key, Body=json.dumps(data, indent=4))
 
-# Example usage
 if __name__ == '__main__':
-    profile_name = 'your-aws-profile'
-    region_name = 'us-east-2'
-    bucket_names = '902505571347-test-bucket,902505571347-test-bucket-01'
-    output_bucket = '902505571347-test-bucket'
-    output_directory = 's3-buckets-storage-report'  # Specify the directory name here
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+
+    profile_name = config['aws']['profile_name']
+    region_name = config['aws']['region_name']
+    bucket_names = config['buckets']['bucket_names']
+    output_bucket = config['buckets']['output_bucket']
+    output_directory = config['buckets']['output_directory']
 
     session = initialize_aws_connection(profile_name, region_name)
     write_sizes_to_s3(session, bucket_names, output_bucket, output_directory)
