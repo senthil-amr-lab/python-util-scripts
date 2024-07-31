@@ -3,6 +3,7 @@ import json
 from collections import defaultdict
 from datetime import datetime
 import configparser
+import argparse
 
 def initialize_aws_connection(aws_access_key_id, aws_secret_access_key, region_name):
     session = boto3.Session(
@@ -92,8 +93,12 @@ def write_sizes_to_s3(session, bucket_names, output_bucket, output_directory):
         s3.put_object(Bucket=output_bucket, Key=output_key, Body=json.dumps(data, indent=4))
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Process environment parameter.')
+    parser.add_argument('--env', required=True, help='Environment name (e.g., dev, prod)')
+    args = parser.parse_args()
+
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read(f'config-{args.env}.ini')
 
     profile_name = config['aws']['profile_name']
     region_name = config['aws']['region_name']
