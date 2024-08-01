@@ -5,29 +5,24 @@ from datetime import datetime
 import configparser
 import argparse
 
-def initialize_aws_connection(aws_access_key_id, aws_secret_access_key, region_name):
-    session = boto3.Session(
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        region_name=region_name
-    )
+def initialize_aws_connection(profile_name):
+    session = boto3.Session(profile_name=profile_name)
     return session
+
 
 def get_s3_objects_size(session, bucket_name):
     s3 = session.client('s3')
-    response = s3.list_objects_v2(Bucket=bucket_name)
+    paginator = s3.get_paginator('list_objects_v2')
+    page_iterator = paginator.paginate(Bucket=bucket_name)
 
-    objects_size = {}
+    objects_sizes = []
+    for page in page_iterator:
+        if 'Contents' in page:
+            for obj in page['Contents']:
+                objects_sizes.append({'bucket_name': bucket_name, 'Key': obj['Key'], 'Size': obj['Size'], "size-type": "bytes",
+                                      "object-type": "directory" if obj['Key'].endswith('/') else "file"})
 
-    if 'Contents' in response:
-        for obj in response['Contents']:
-            objects_size[obj['Key']] = {
-                "size": obj['Size'],
-                "size-type": "bytes",
-                "object-type": "directory" if obj['Key'].endswith('/') else "file"
-            }
-
-    return objects_size
+    return objects_sizes
 
 def get_sizes_for_buckets(session, bucket_names):
     bucket_list = bucket_names.split(',')
@@ -37,7 +32,7 @@ def get_sizes_for_buckets(session, bucket_names):
         bucket = bucket.strip()
         sizes[bucket] = {
             "bucket-name": bucket,
-            "objects": get_s3_objects_size(session, bucket)
+            "objects_sizes": get_s3_objects_size(session, bucket)
         }
 
     return sizes
@@ -106,6 +101,6 @@ if __name__ == '__main__':
     output_bucket = config['buckets']['output_bucket']
     output_directory = config['buckets']['output_directory']
 
-    session = initialize_aws_connection(profile_name, region_name)
+    session = initialize_aws_connection(profile_name)
     write_sizes_to_s3(session, bucket_names, output_bucket, output_directory)
     print(f"Sizes for buckets '{bucket_names}' have been written to '{output_bucket}/{output_directory}'")

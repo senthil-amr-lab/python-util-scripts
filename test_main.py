@@ -16,42 +16,50 @@ class TestMain(unittest.TestCase):
     @patch('boto3.Session')
     def test_initialize_aws_connection(self, mock_session):
         mock_session.return_value = MagicMock()
-        session = initialize_aws_connection('fake_access_key', 'fake_secret_key', 'fake_region')
+        session = initialize_aws_connection('dev-user')
         self.assertIsNotNone(session)
-        mock_session.assert_called_once_with(
-            aws_access_key_id='fake_access_key',
-            aws_secret_access_key='fake_secret_key',
-            region_name='fake_region'
-        )
+        mock_session.assert_called_once_with(profile_name='dev-user')
 
     @patch('boto3.Session.client')
     def test_get_s3_objects_size(self, mock_client):
         mock_s3 = MagicMock()
         mock_client.return_value = mock_s3
-        mock_s3.list_objects_v2.return_value = {
-            'Contents': [
+        mock_s3.get_paginator.return_value.paginate.return_value = [
+            {'Contents': [
                 {'Key': 'file1.txt', 'Size': 123},
                 {'Key': 'folder/', 'Size': 0},
                 {'Key': 'folder/file2.txt', 'Size': 456}
-            ]
-        }
+            ]}
+        ]
         session = boto3.Session()
         sizes = get_s3_objects_size(session, 'fake_bucket')
-        expected_sizes = {
-            'file1.txt': {'size': 123, 'size-type': 'bytes', 'object-type': 'file'},
-            'folder/': {'size': 0, 'size-type': 'bytes', 'object-type': 'directory'},
-            'folder/file2.txt': {'size': 456, 'size-type': 'bytes', 'object-type': 'file'}
-        }
+        expected_sizes = [
+            {'bucket_name': 'fake_bucket', 'Key': 'file1.txt', 'Size': 123, 'size-type': 'bytes', 'object-type': 'file'},
+            {'bucket_name': 'fake_bucket', 'Key': 'folder/', 'Size': 0, 'size-type': 'bytes', 'object-type': 'directory'},
+            {'bucket_name': 'fake_bucket', 'Key': 'folder/file2.txt', 'Size': 456, 'size-type': 'bytes', 'object-type': 'file'}
+        ]
         self.assertEqual(sizes, expected_sizes)
 
     @patch('main.get_s3_objects_size')
     def test_get_sizes_for_buckets(self, mock_get_s3_objects_size):
-        mock_get_s3_objects_size.return_value = {'file1.txt': {'size': 123, 'size-type': 'bytes', 'object-type': 'file'}}
+        mock_get_s3_objects_size.return_value = [
+            {'bucket_name': 'bucket1', 'Key': 'file1.txt', 'Size': 123, 'size-type': 'bytes', 'object-type': 'file'}
+        ]
         session = boto3.Session()
         sizes = get_sizes_for_buckets(session, 'bucket1,bucket2')
         expected_sizes = {
-            'bucket1': {'bucket-name': 'bucket1', 'objects': {'file1.txt': {'size': 123, 'size-type': 'bytes', 'object-type': 'file'}}},
-            'bucket2': {'bucket-name': 'bucket2', 'objects': {'file1.txt': {'size': 123, 'size-type': 'bytes', 'object-type': 'file'}}}
+            'bucket1': {
+                'bucket-name': 'bucket1',
+                'objects_sizes': [
+                    {'bucket_name': 'bucket1', 'Key': 'file1.txt', 'Size': 123, 'size-type': 'bytes', 'object-type': 'file'}
+                ]
+            },
+            'bucket2': {
+                'bucket-name': 'bucket2',
+                'objects_sizes': [
+                    {'bucket_name': 'bucket1', 'Key': 'file1.txt', 'Size': 123, 'size-type': 'bytes', 'object-type': 'file'}
+                ]
+            }
         }
         self.assertEqual(sizes, expected_sizes)
 
@@ -88,7 +96,12 @@ class TestMain(unittest.TestCase):
         mock_s3 = MagicMock()
         mock_client.return_value = mock_s3
         mock_get_sizes_for_buckets.return_value = {
-            'bucket1': {'bucket-name': 'bucket1', 'objects': {'file1.txt': {'size': 123, 'size-type': 'bytes', 'object-type': 'file'}}}
+            'bucket1': {
+                'bucket-name': 'bucket1',
+                'objects_sizes': [
+                    {'bucket_name': 'bucket1', 'Key': 'file1.txt', 'Size': 123, 'size-type': 'bytes', 'object-type': 'file'}
+                ]
+            }
         }
         session = boto3.Session()
         write_sizes_to_s3(session, 'bucket1', 'output_bucket', 'output_directory')
