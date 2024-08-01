@@ -13,16 +13,20 @@ def initialize_aws_connection(profile_name):
 def get_s3_objects_size(session, bucket_name):
     s3 = session.client('s3')
     paginator = s3.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=bucket_name)
+    pages = paginator.paginate(Bucket=bucket_name)
+    
+    sizes = []
+    for page in pages:
+        for obj in page.get('Contents', []):
+            sizes.append({
+                'bucketName': bucket_name,
+                'objectKey': obj['Key'],
+                'size': obj['Size'],
+                'sizeType': 'bytes',
+                'objectType': 'directory' if obj['Key'].endswith('/') else 'file'
+            })
+    return sizes
 
-    objects_sizes = []
-    for page in page_iterator:
-        if 'Contents' in page:
-            for obj in page['Contents']:
-                objects_sizes.append({'bucket_name': bucket_name, 'Key': obj['Key'], 'Size': obj['Size'], "size-type": "bytes",
-                                      "object-type": "directory" if obj['Key'].endswith('/') else "file"})
-
-    return objects_sizes
 
 def get_sizes_for_buckets(session, bucket_names):
     bucket_list = bucket_names.split(',')
@@ -37,44 +41,6 @@ def get_sizes_for_buckets(session, bucket_names):
 
     return sizes
 
-def get_directory_size(session, bucket_name, directory_prefix):
-    s3 = session.client('s3')
-    paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=bucket_name, Prefix=directory_prefix)
-
-    total_size = 0
-
-    for page in pages:
-        if 'Contents' in page:
-            for obj in page['Contents']:
-                total_size += obj['Size']
-
-    return {
-        "size": total_size,
-        "size-type": "bytes"
-    }
-
-def get_all_directories_size(session, bucket_name):
-    s3 = session.client('s3')
-    paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=bucket_name)
-
-    directory_sizes = defaultdict(int)
-
-    for page in pages:
-        if 'Contents' in page:
-            for obj in page['Contents']:
-                key = obj['Key']
-                if '/' in key:
-                    directory = key.split('/')[0] + '/'
-                    directory_sizes[directory] += obj['Size']
-                else:
-                    directory_sizes['root/'] += obj['Size']
-
-    # Convert sizes to the desired format
-    directory_sizes_with_type = {k: {"size": v, "size-type": "bytes"} for k, v in directory_sizes.items()}
-
-    return json.dumps(directory_sizes_with_type, indent=4)
 
 def write_sizes_to_s3(session, bucket_names, output_bucket, output_directory):
     sizes = get_sizes_for_buckets(session, bucket_names)
