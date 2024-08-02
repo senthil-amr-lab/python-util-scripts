@@ -4,11 +4,11 @@ from collections import defaultdict
 from datetime import datetime
 import configparser
 import argparse
+import sys
 
 def initialize_aws_connection(profile_name):
     session = boto3.Session(profile_name=profile_name)
     return session
-
 
 def get_s3_objects_size(session, bucket_name):
     s3 = session.client('s3')
@@ -27,7 +27,6 @@ def get_s3_objects_size(session, bucket_name):
             })
     return sizes
 
-
 def get_sizes_for_buckets(session, bucket_names):
     bucket_list = bucket_names.split(',')
     sizes = {}
@@ -41,7 +40,6 @@ def get_sizes_for_buckets(session, bucket_names):
 
     return sizes
 
-
 def write_sizes_to_s3(session, bucket_names, output_bucket, output_directory):
     sizes = get_sizes_for_buckets(session, bucket_names)
     s3 = session.client('s3')
@@ -50,8 +48,23 @@ def write_sizes_to_s3(session, bucket_names, output_bucket, output_directory):
     current_date = datetime.now().strftime("%d-%m-%Y")
 
     for bucket, data in sizes.items():
-        output_key = f"{output_directory}/{current_date}/{bucket}.json"
-        s3.put_object(Bucket=output_bucket, Key=output_key, Body=json.dumps(data, indent=4))
+        output_key_prefix = f"{output_directory}/{current_date}/{bucket}"
+        json_data = json.dumps(data, indent=4)
+        json_data_size = sys.getsizeof(json_data)
+
+        # 4 GB in bytes
+        max_size = 4 * 1024 * 1024 * 1024
+
+        if json_data_size > max_size:
+            # Split the data into chunks
+            chunk_size = max_size // 2  # Example chunk size, can be adjusted
+            chunks = [json_data[i:i + chunk_size] for i in range(0, len(json_data), chunk_size)]
+            for idx, chunk in enumerate(chunks):
+                output_key = f"{output_key_prefix}_part{idx + 1}.json"
+                s3.put_object(Bucket=output_bucket, Key=output_key, Body=chunk)
+        else:
+            output_key = f"{output_key_prefix}.json"
+            s3.put_object(Bucket=output_bucket, Key=output_key, Body=json_data)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process environment parameter.')
