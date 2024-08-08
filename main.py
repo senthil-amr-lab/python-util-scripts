@@ -39,12 +39,28 @@ def get_directories_sizes(bucket_name, objects_sizes):
     # Convert dictionary to list of dictionaries
     directory_sizes_list = [{'bucketName': bucket_name, 'directory': dir_name, 'size': size} for dir_name, size in directory_sizes.items()]
     
-    return directory_sizes_list
+    return total_directory_size(directory_sizes_list)
 
 def chunk_list(data, chunk_size):
     """Split a list into chunks of specified size."""
     for i in range(0, len(data), chunk_size):
         yield data[i:i + chunk_size]
+
+
+def total_directory_size(directories_sizes):
+
+    json_array = []
+
+    for dir_a in directories_sizes:
+        for dir_b in directories_sizes:
+            if dir_a['directory'] == "/":
+                dir_a['size'] += dir_b['size']
+            elif dir_b['directory'].startswith(dir_a['directory']):
+                dir_a['size'] += dir_b['size']
+        json_array.append(dir_a)
+
+    return json_array
+                
 
 def get_sizes_for_buckets(session, bucket_names, output_bucket, output_directory, chunk_size):
     bucket_list = bucket_names.split(',')
