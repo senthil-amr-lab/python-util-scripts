@@ -39,10 +39,14 @@ def get_directory_sizes(bucket_name, objects_sizes):
     # Convert dictionary to list of dictionaries
     directory_sizes_list = [{'bucketName': bucket_name, 'directory': dir_name, 'size': size} for dir_name, size in directory_sizes.items()]
     
-    return json.dumps(directory_sizes_list)
+    return directory_sizes_list
 
+def chunk_list(data, chunk_size):
+    """Split a list into chunks of specified size."""
+    for i in range(0, len(data), chunk_size):
+        yield data[i:i + chunk_size]
 
-def get_sizes_for_buckets(session, bucket_names):
+def get_sizes_for_buckets(session, bucket_names, output_bucket, output_directory, chunk_size=2):
     bucket_list = bucket_names.split(',')
     sizes = {}
 
@@ -54,34 +58,22 @@ def get_sizes_for_buckets(session, bucket_names):
         }
 
         directory_sizes = get_directory_sizes(bucket, sizes[bucket]['objects_sizes'])
-        print(f"Directory sizes for bucket '{bucket}': {directory_sizes}")
-    return sizes
+        
+        # Split directory_sizes into chunks and write each chunk to S3
+        for idx, chunk in enumerate(chunk_list(directory_sizes, chunk_size)):
+            chunk_data = json.dumps(chunk)
+            write_sizes_to_s3(session, bucket, output_bucket, output_directory, chunk_data, idx)
+            print(f"Directory sizes chunk {idx} for bucket '{bucket}': {chunk_data}")
 
-def write_sizes_to_s3(session, bucket_names, output_bucket, output_directory):
-    sizes = get_sizes_for_buckets(session, bucket_names)
+def write_sizes_to_s3(session, bucket_name, output_bucket, output_directory, data, chunk_index):
     s3 = session.client('s3')
 
     # Get current date in dd-mm-yyyy format
     current_date = datetime.now().strftime("%d-%m-%Y")
+    output_key_prefix = f"{output_directory}/{current_date}/{bucket_name}"
 
-    for bucket, data in sizes.items():
-        output_key_prefix = f"{output_directory}/{current_date}/{bucket}"
-        json_data = json.dumps(data, indent=4)
-        json_data_size = sys.getsizeof(json_data)
-
-        # 4 GB in bytes
-        max_size = 4 * 1024 * 1024 * 1024
-
-        if json_data_size > max_size:
-            # Split the data into chunks
-            chunk_size = max_size // 2  # Example chunk size, can be adjusted
-            chunks = [json_data[i:i + chunk_size] for i in range(0, len(json_data), chunk_size)]
-            for idx, chunk in enumerate(chunks):
-                output_key = f"{output_key_prefix}_part{idx + 1}.json"
-                s3.put_object(Bucket=output_bucket, Key=output_key, Body=chunk)
-        else:
-            output_key = f"{output_key_prefix}.json"
-            s3.put_object(Bucket=output_bucket, Key=output_key, Body=json_data)
+    output_key = f"{output_key_prefix}_chunk_{chunk_index}.json"
+    s3.put_object(Bucket=output_bucket, Key=output_key, Body=data)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process environment parameter.')
@@ -98,5 +90,5 @@ if __name__ == '__main__':
     output_directory = config['buckets']['output_directory']
 
     session = initialize_aws_connection(profile_name)
-    write_sizes_to_s3(session, bucket_names, output_bucket, output_directory)
+    get_sizes_for_buckets(session, bucket_names, output_bucket, output_directory)
     print(f"Sizes for buckets '{bucket_names}' have been written to '{output_bucket}/{output_directory}'")
