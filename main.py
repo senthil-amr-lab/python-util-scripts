@@ -27,6 +27,21 @@ def get_s3_objects_size(session, bucket_name):
             })
     return sizes
 
+def get_directory_sizes(bucket_name, objects_sizes):
+    directory_sizes = defaultdict(int)
+    
+    for obj in objects_sizes:
+        if obj['objectType'] == 'file':
+            directory = '/'.join(obj['objectKey'].split('/')[:-1])
+            directory = directory if directory else '/'
+            directory_sizes[directory] += obj['size']
+    
+    # Convert dictionary to list of dictionaries
+    directory_sizes_list = [{'bucketName': bucket_name, 'directory': dir_name, 'size': size} for dir_name, size in directory_sizes.items()]
+    
+    return json.dumps(directory_sizes_list)
+
+
 def get_sizes_for_buckets(session, bucket_names):
     bucket_list = bucket_names.split(',')
     sizes = {}
@@ -38,6 +53,8 @@ def get_sizes_for_buckets(session, bucket_names):
             "objects_sizes": get_s3_objects_size(session, bucket)
         }
 
+        directory_sizes = get_directory_sizes(bucket, sizes[bucket]['objects_sizes'])
+        print(f"Directory sizes for bucket '{bucket}': {directory_sizes}")
     return sizes
 
 def write_sizes_to_s3(session, bucket_names, output_bucket, output_directory):
