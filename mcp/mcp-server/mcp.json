@@ -1,0 +1,14 @@
+{
+	"servers": {
+		"my-mcp-server-f804e5f0": {
+			"type": "stdio",
+			"command": "npm",
+			"args": [
+				"run",
+				"server:dev"
+			],
+			"cwd": "lab/mcp/mcp-server"
+		}
+	},
+	"inputs": []
+}

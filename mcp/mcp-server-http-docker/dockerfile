@@ -1,0 +1,19 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy package files and install deps
+COPY package*.json ./
+RUN npm install
+
+# Copy source
+COPY . .
+
+# Build TypeScript → dist/
+RUN npm run build
+
+# Expose app port
+EXPOSE 3000
+
+# Start the compiled JS
+CMD ["node", "dist/server.js"]
